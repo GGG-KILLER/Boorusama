@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 
 // Package imports:
-import 'package:context_menus/context_menus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 
@@ -16,7 +15,6 @@ import 'package:boorusama/core/settings/settings.dart';
 import 'package:boorusama/core/widgets/widgets.dart';
 import 'package:boorusama/foundation/error.dart';
 import 'package:boorusama/foundation/gestures.dart';
-import 'package:boorusama/foundation/image.dart';
 import 'package:boorusama/foundation/theme.dart';
 import 'package:boorusama/functional.dart';
 import 'package:boorusama/router.dart';
@@ -94,11 +92,7 @@ class _InfinitePostListScaffoldState<T extends Post>
     final config = ref.watchConfig;
     final booruBuilder = ref.watchBooruBuilder(config);
     final postGesturesHandler = booruBuilder?.postGestureHandlerBuilder;
-    final hasCustomLongPress = booruBuilder?.canHandlePostGesture(
-          GestureType.longPress,
-          config.postGestures?.preview,
-        ) ??
-        false;
+    final gestures = config.postGestures?.preview;
 
     final gridThumbnailUrlBuilder = booruBuilder?.gridThumbnailUrlBuilder;
     final multiSelectActions = booruBuilder?.multiSelectionActionsBuilder?.call(
@@ -128,106 +122,61 @@ class _InfinitePostListScaffoldState<T extends Post>
           postController: widget.controller,
           multiSelectController: _multiSelectController,
           constraints: constraints,
+          contextMenuBuilder: widget.contextMenuBuilder,
           itemBuilder: (context, index, post) {
-            final (width, height, cacheWidth, cacheHeight) =
-                context.sizeFromConstraints(
-              constraints,
-              post.aspectRatio,
-            );
-
             return ValueListenableBuilder(
               valueListenable: _multiSelectController.multiSelectNotifier,
-              builder: (_, multiSelect, __) => DefaultPostListContextMenuRegion(
-                isEnabled: !multiSelect,
-                contextMenu: widget.contextMenuBuilder != null
-                    ? widget.contextMenuBuilder!.call(
-                        post,
-                        () {
-                          _multiSelectController.enableMultiSelect();
-                        },
-                      )
-                    : GeneralPostContextMenu(
-                        hasAccount: false,
-                        onMultiSelect: () {
-                          _multiSelectController.enableMultiSelect();
-                        },
-                        post: post,
-                      ),
-                child: GestureDetector(
-                  onLongPress: hasCustomLongPress && postGesturesHandler != null
-                      ? () => postGesturesHandler(
-                            ref,
-                            ref.watchConfig.postGestures?.preview?.longPress,
+              builder: (_, multiSelect, __) => GestureDetector(
+                onLongPress:
+                    gestures.canLongPress && postGesturesHandler != null
+                        ? () => postGesturesHandler(
+                              ref,
+                              ref.watchConfig.postGestures?.preview?.longPress,
+                              post,
+                            )
+                        : null,
+                child: SliverPostGridImageGridItem(
+                  post: post,
+                  hideOverlay: multiSelect,
+                  onTap: !multiSelect
+                      ? () {
+                          if (gestures.canTap && postGesturesHandler != null) {
+                            postGesturesHandler(
+                              ref,
+                              ref.watchConfig.postGestures?.preview?.tap,
+                              post,
+                            );
+                          } else {
+                            goToPostDetailsPageFromController(
+                              context: context,
+                              controller: widget.controller,
+                              initialIndex: index,
+                              scrollController: _autoScrollController,
+                            );
+                          }
+                        }
+                      : null,
+                  quickActionButton: !multiSelect
+                      ? DefaultImagePreviewQuickActionButton(post: post)
+                      : null,
+                  autoScrollOptions: AutoScrollOptions(
+                    controller: _autoScrollController,
+                    index: index,
+                  ),
+                  score: post.score,
+                  image: BooruImage(
+                    aspectRatio: post.aspectRatio,
+                    imageUrl: gridThumbnailUrlBuilder != null
+                        ? gridThumbnailUrlBuilder(
+                            settings.imageQuality,
                             post,
                           )
-                      : null,
-                  child: ExplicitContentBlockOverlay(
-                    width: width ?? 100,
-                    height: height ?? 100,
-                    block: settings.blurExplicitMedia && post.isExplicit,
-                    childBuilder: (block) => ImageGridItem(
-                      isGif: post.isGif,
-                      isAI: post.isAI,
-                      hideOverlay: multiSelect,
-                      onTap: !multiSelect
-                          ? () {
-                              if (booruBuilder?.canHandlePostGesture(
-                                          GestureType.tap,
-                                          config.postGestures?.preview) ==
-                                      true &&
-                                  postGesturesHandler != null) {
-                                postGesturesHandler(
-                                  ref,
-                                  ref.watchConfig.postGestures?.preview?.tap,
-                                  post,
-                                );
-                              } else {
-                                goToPostDetailsPageFromController(
-                                  context: context,
-                                  controller: widget.controller,
-                                  initialIndex: index,
-                                  scrollController: _autoScrollController,
-                                );
-                              }
-                            }
-                          : null,
-                      quickActionButton: !multiSelect && !block
-                          ? DefaultImagePreviewQuickActionButton(post: post)
-                          : null,
-                      autoScrollOptions: AutoScrollOptions(
-                        controller: _autoScrollController,
-                        index: index,
-                      ),
-                      isAnimated: post.isAnimated,
-                      isTranslated: post.isTranslated,
-                      hasComments: post.hasComment,
-                      hasParentOrChildren: post.hasParentOrChildren,
-                      score: settings.showScoresInGrid ? post.score : null,
-                      borderRadius: BorderRadius.circular(
-                        settings.imageBorderRadius,
-                      ),
-                      image: BooruImage(
-                        aspectRatio: post.aspectRatio,
-                        imageUrl: block
-                            ? ''
-                            : gridThumbnailUrlBuilder != null
-                                ? gridThumbnailUrlBuilder(
-                                    settings.imageQuality,
-                                    post,
-                                  )
-                                : post.thumbnailImageUrl,
-                        borderRadius: BorderRadius.circular(
-                          settings.imageBorderRadius,
-                        ),
-                        forceFill:
-                            settings.imageListType == ImageListType.standard,
-                        placeholderUrl: post.thumbnailImageUrl,
-                        width: width,
-                        height: height,
-                        cacheHeight: cacheHeight,
-                        cacheWidth: cacheWidth,
-                      ),
+                        : post.thumbnailImageUrl,
+                    borderRadius: BorderRadius.circular(
+                      settings.imageBorderRadius,
                     ),
+                    forceFill: settings.imageListType == ImageListType.standard,
+                    placeholderUrl: post.thumbnailImageUrl,
                   ),
                 ),
               ),
@@ -236,38 +185,6 @@ class _InfinitePostListScaffoldState<T extends Post>
           error: widget.errors,
         ),
       ),
-    );
-  }
-}
-
-class DefaultPostListContextMenuRegion extends ConsumerWidget {
-  const DefaultPostListContextMenuRegion({
-    super.key,
-    this.isEnabled = true,
-    required this.contextMenu,
-    required this.child,
-  });
-
-  final bool isEnabled;
-  final Widget contextMenu;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final config = ref.watchConfig;
-    final booruBuilder = ref.watchBooruBuilder(config);
-    final hasCustomLongPress = booruBuilder?.canHandlePostGesture(
-          GestureType.longPress,
-          config.postGestures?.preview,
-        ) ??
-        false;
-
-    if (hasCustomLongPress) return child;
-
-    return ContextMenuRegion(
-      isEnabled: isEnabled,
-      contextMenu: contextMenu,
-      child: child,
     );
   }
 }
